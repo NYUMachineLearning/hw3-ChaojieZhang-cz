@@ -183,6 +183,7 @@ Lasso_regression <- train(Temp ~ Wind + Month, data = train_regression,
 ```{r}
 Lasso_regression
 ```
+```{r}
 lasso_test_pred <- predict(Lasso_regression, newdata = test_regression)
 
 #plot the predicted values vs the observed values
