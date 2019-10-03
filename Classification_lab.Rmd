@@ -174,19 +174,27 @@ median(resid(Ridge_regression))
 $$Lasso Regression=\sum_{i=1}^{n}(y_i - w_0 - \sum_{j=1}^{p}w_jx_{ij})^2 + \lambda\sum_{j=1}^p|w_j|$$
 2. Create and train model 
 ```{r}
+ctrl =  trainControl(method = "boot", 15)
 
+Lasso_regression <- train(Temp ~ Wind + Month, data = train_regression,
+                          method = 'lasso', trControl= ctrl) 
 ```
 
 ```{r}
+Lasso_regression
 ```
-
-Examine the residuals 
-```{r}
+lasso_test_pred <- predict(Lasso_regression, newdata = test_regression)
 
 #plot the predicted values vs the observed values
-
+plot_lasso_test_pred <- data.frame(Temp_test_pred = lasso_test_pred, 
+                                   Observed_Temp = test_regression$Temp)
+ggplot(data = plot_lasso_test_pred) +
+  geom_point(aes(x=Observed_Temp, y = Temp_test_pred)) + 
+  ggtitle("True Temp Value vs Predicted Temp Value Lasso Regression") +
+  theme_bw()
 
 #median residual value should be close to zero
+median(resid(Lasso_regression))
 ```
 
 
@@ -414,14 +422,105 @@ ggplot(data = test_classifier_log) +
 
 1. Use the Breast Cancer dataset from the mlbench package, and predict whether the cancer is malignant or benign using one of the algorithms we learned about in class. Give some rationale as to why you chose this algorithm. Plot ROC curves, and confusion matrices. If you are choosing a hyperparameter like K or lambda, explain how and why you chose it. 
 
+Load the package and data
 ```{r}
-#libra
-#train
-#test
+library(mlbench)
+data(BreastCancer)
+#View(BreastCancer)
+```
 
-##ctrl <- trainControl()
-## <- train(, data = , method = "", trControl = ctrl)
-## predict(, newdata="")
+Clean the data and split the data to train datasets and test datasets
+```{r}
+BreastCancer_data <- na.omit(BreastCancer)
+BreastCancer_data[,1:10] <- sapply(X = BreastCancer_data[,1:10], FUN=as.numeric)
+train_size <- floor(0.75 * nrow(BreastCancer_data))
+set.seed(543)
+train_pos <- sample(seq_len(nrow(BreastCancer_data)), size = train_size)
+train_data <- BreastCancer_data[train_pos,-c(1)]
+test_data <- BreastCancer_data[-train_pos,-c(1)]
+train_data
+```
+
+PCA
+```{r}
+data_PCA <- prcomp(train_data[,-c(10)])
+autoplot(data_PCA,colour = as.data.frame(lapply(train_data,as.numeric))[,c(10)]+1)
+```
+
+LDA
+```{r}
+data_LDA <- lda(Class ~. ,train_data)
+plot(data_LDA)
+```
+```{r}
+Cl_thickness <- ggplot(data = train_data, aes(x = Cl.thickness, fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25)  +
+  theme_bw()
+Cell_size <- ggplot(data = train_data, aes(x = Cell.size, fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25) +
+  theme_bw()
+
+Cell_shape <- ggplot(data = train_data, aes(x = Cell.shape, fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25)  +
+  theme_bw()
+
+Marg_adhesion <- ggplot(data = train_data, aes(x = Marg.adhesion, fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25)  +
+  theme_bw()
+
+Epith_c_size <- ggplot(data = train_data, aes(x = Epith.c.size, fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25)  +
+  theme_bw()
+
+Bare_nuclei <- ggplot(data = train_data, aes(x = Bare.nuclei, fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25)  +
+  theme_bw()
+
+Bl_cromatin <- ggplot(data = train_data, aes(x = Bl.cromatin, fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25)  +
+  theme_bw()
+
+Normal_nucleoli <- ggplot(data = train_data, aes(x = Normal.nucleoli, fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25)  +
+  theme_bw()
+
+Mitoses_ <- ggplot(data = train_data, aes(x = Normal.nucleoli, fill = Class)) + 
+  geom_histogram(position="identity", alpha=0.5, bins= 25)  +
+  theme_bw()
+
+
+grid.arrange(Cl_thickness,Cell_size,Cell_shape,Marg_adhesion)
+grid.arrange(Epith_c_size,Bare_nuclei,Bl_cromatin,Normal_nucleoli,Mitoses_)
+```
+
+  Because we are doing classification prediction, we can use k-nearest neighbors, logistic regression, linear discriminant analysis, etc. In PCA plot, we can see malignant and benign datas don't interact too much with each other, and knn can sometimes give a better performance when two datas interacting much to each other. In LDA plot, we can see there are some overlaps in two data groups, which indicates few mistakes in classification by LDA. And the features of datas don't seem to follow normal distribution. 
+  I finally choose logistic regression for prediction. Because the datas don't seem to randomly distributed in any columns, I don't drop any columns for analysis.
+```{r}
+#names(getModelInfo())
+ctrl <- trainControl(method = "repeatedcv", repeats = 15,classProbs = T, savePredictions = T)
+logistic_regression <- train(Class ~ ., data = train_data, method = "glm", family= "binomial", trControl = ctrl)
+logistic_regression
+logistic_regression_predict <- predict(logistic_regression, newdata = test_data)
+logistic_regression_predict
+```
+
+ConfusionMatrix
+```{r}
+confusionMatrix(logistic_regression_predict, reference = test_data$Class)
+```
+
+ROC curves
+```{r}
+plot(x = roc(predictor = logistic_regression$pred$malignant,
+             response = logistic_regression$pred$obs)$specificities, 
+     y = roc(predictor = logistic_regression$pred$malignant, 
+             response = logistic_regression$pred$obs)$sensitivities,
+     col= "blue", xlim = c(1, 0), type ="l", ylab = "Sensitivity",
+     xlab = "Specificity")
+legend("bottomright", legend = paste("malignant v benign --", 
+                                     roc(predictor = logistic_regression$pred$malignant,
+                                         response = logistic_regression$pred$obs)$auc
+, sep = ""), col = c("blue"), fill = c("blue"))
 ```
 
 
